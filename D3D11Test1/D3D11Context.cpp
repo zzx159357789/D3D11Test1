@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "D3D11Context.h"
-
+#include <D3DX11async.h>
+const XMVECTORF32 Silver = { 0.75f,0.75f,0.75f,1.0f };
 D3D11CONTEXT_PTR CD3D11Context::instance_ = nullptr;
 CD3D11Context::CD3D11Context():
 	g_device(NULL),
@@ -150,6 +151,7 @@ bool CD3D11Context::initialize(HWND hwnd)
 	viewPort.TopLeftY = 0.f;
 	g_deviceContext->RSSetViewports(1, &viewPort);
 
+	pm.LoadContent();
 
 	g_hThreadEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	std::thread temThread(&CD3D11Context::handlerFun,this);
@@ -177,17 +179,48 @@ void CD3D11Context::exitThread()
 	exit_ = true;
 	WaitForSingleObject(g_hThreadEvent, INFINITE); //等待事件被触发
 	CloseHandle(g_hThreadEvent);
+	pm.unLoadContent();
 }
 
 void CD3D11Context::render()
 {
 	//渲染一个绿色的窗口
 	XMVECTORF32 color = { 0.f, 1.f, 0.f, 1.6f };
-	g_deviceContext->ClearRenderTargetView(g_renderTargetView, reinterpret_cast<float*>(&color));
+	g_deviceContext->ClearRenderTargetView(g_renderTargetView, reinterpret_cast<const float*>(&Silver));
 	g_deviceContext->ClearDepthStencilView(g_depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.f, 0);
 
 	//全部的场景绘制工作在这里面进行.....
-
+	pm.render();
 	//最后显示
 	g_swapChain->Present(0, 0);
+}
+
+bool CD3D11Context::CompileD3DShader(WCHAR* filePath, char* entry, char* shaderModel, ID3DBlob** buffer)
+{
+	DWORD shaderFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+
+#if defined( DEBUG ) || defined( _DEBUG )
+	shaderFlags |= D3DCOMPILE_DEBUG;
+#endif
+
+	ID3DBlob* errorBuffer = NULL;
+	HRESULT result;
+
+	result = D3DX11CompileFromFile(filePath, 0, 0, entry, shaderModel, shaderFlags, NULL, NULL, buffer, &errorBuffer, NULL);
+
+	if (FAILED(result))
+	{
+		if (errorBuffer != 0)
+		{
+			OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
+			errorBuffer->Release();
+		}
+
+		return false;
+	}
+
+	if (errorBuffer != 0)
+		errorBuffer->Release();
+
+	return true;
 }
